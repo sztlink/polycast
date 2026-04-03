@@ -1,0 +1,13 @@
+{
+  "name": "@polycast/node-agent",
+  "version": "0.1.0",
+  "description": "Daemon running on each mini PC node — controls mpv and syncs with master",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

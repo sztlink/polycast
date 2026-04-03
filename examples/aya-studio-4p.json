@@ -1,0 +1,81 @@
+{
+  "_comment": "AYA Studio — 4 projetores panorâmicos. Preencher hosts reais após setup de rede.",
+  "_lastUpdated": "2026-04-03",
+
+  "master": {
+    "host": "192.168.1.100",
+    "port": 3001
+  },
+
+  "canvas": {
+    "width": 7200,
+    "height": 1080,
+    "fps": 25,
+    "_comment": "Canvas útil: 4 × 1920 - 3 × 160 overlap = 7200px. Produzir master nessa resolução."
+  },
+
+  "nodes": [
+    {
+      "id": "node-1",
+      "host": "192.168.1.101",
+      "_label": "Projetor 1 (esquerda)",
+      "crop": {
+        "x": 0,
+        "y": 0,
+        "w": 2080,
+        "h": 1080,
+        "_comment": "1920 útil + 160 de overlap à direita"
+      },
+      "blend": {
+        "right": 160
+      }
+    },
+    {
+      "id": "node-2",
+      "host": "192.168.1.102",
+      "_label": "Projetor 2",
+      "crop": {
+        "x": 1760,
+        "y": 0,
+        "w": 2240,
+        "h": 1080,
+        "_comment": "160 overlap esq + 1920 útil + 160 overlap dir"
+      },
+      "blend": {
+        "left": 160,
+        "right": 160
+      }
+    },
+    {
+      "id": "node-3",
+      "host": "192.168.1.103",
+      "_label": "Projetor 3",
+      "crop": {
+        "x": 3680,
+        "y": 0,
+        "w": 2240,
+        "h": 1080,
+        "_comment": "160 overlap esq + 1920 útil + 160 overlap dir"
+      },
+      "blend": {
+        "left": 160,
+        "right": 160
+      }
+    },
+    {
+      "id": "node-4",
+      "host": "192.168.1.104",
+      "_label": "Projetor 4 (direita)",
+      "crop": {
+        "x": 5440,
+        "y": 0,
+        "w": 2080,
+        "h": 1080,
+        "_comment": "160 overlap esq + 1920 útil"
+      },
+      "blend": {
+        "left": 160
+      }
+    }
+  ]
+}

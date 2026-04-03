@@ -1,0 +1,26 @@
+[Unit]
+Description=Polycast Node Agent
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=polycast
+WorkingDirectory=/opt/polycast
+ExecStart=/usr/bin/node /opt/polycast/node-agent/src/index.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=polycast-node
+
+# Environment
+Environment=NODE_ENV=production
+Environment=POLYCAST_CONFIG=/opt/polycast/config.json
+
+# Resource limits — be nice to the system
+CPUQuota=80%
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
