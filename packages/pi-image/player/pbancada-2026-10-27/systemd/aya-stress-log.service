@@ -1,0 +1,5 @@
+[Unit]
+Description=registro do teste de estresse
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/aya-stress-log

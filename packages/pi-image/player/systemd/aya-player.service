@@ -1,0 +1,15 @@
+[Unit]
+Description=aya-player (lista em loop, HDMI travado no fps do vídeo, vídeo no overlay, áudio no fone ou na placa USB)
+After=multi-user.target aya-boot.service
+Conflicts=getty@tty1.service
+[Service]
+User=aya
+SupplementaryGroups=video render audio input
+WorkingDirectory=/var/lib/aya-player
+# opções do mpv medidas no pbancada: base do soak de 48 h + vencedora do autoresearch (27/10/2026)
+ExecStart=/usr/local/bin/aya-player-lista /var/lib/aya-player/conteudo/lista.m3u --hwdec=v4l2m2m --drm-drmprime-video-plane=primary --drm-draw-plane=overlay --audio-device=alsa/plughw:CARD=Headphones --volume=70 --input-ipc-server=/run/aya-player/mpv.sock --msg-level=all=warn --osd-level=0 --no-osc --load-scripts=no --audio-format=s16 --cache=no
+RuntimeDirectory=aya-player
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target

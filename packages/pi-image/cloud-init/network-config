@@ -1,0 +1,7 @@
+# Bancada: cabo com DHCP. O Wi-Fi da expo e o IP fixo do projetor entram no provision.sh (NetworkManager).
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      optional: true

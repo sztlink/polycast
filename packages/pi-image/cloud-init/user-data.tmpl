@@ -1,0 +1,17 @@
+#cloud-config
+# Primeiro boot de um player AYA (Raspberry Pi OS Trixie, cloud-init).
+# Host e chaves SSH são preenchidos pelo grava-cartao.sh.
+hostname: __HOST__
+manage_etc_hosts: true
+timezone: America/Bahia
+locale: pt_BR.UTF-8
+enable_ssh: true
+ssh_pwauth: false
+users:
+  - name: aya
+    groups: [sudo, video, audio, render, input, plugdev]
+    shell: /bin/bash
+    lock_passwd: true
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+__CHAVES__

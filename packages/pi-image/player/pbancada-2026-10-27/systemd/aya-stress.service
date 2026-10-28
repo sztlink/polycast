@@ -1,0 +1,14 @@
+[Unit]
+Description=aya-player teste de estresse (reel em loop com corner pin)
+After=multi-user.target
+Conflicts=getty@tty1.service
+[Service]
+User=aya
+SupplementaryGroups=video render audio input
+WorkingDirectory=/var/lib/aya-player/teste
+ExecStart=/usr/bin/mpv --no-config --vo=gpu --gpu-context=drm --hwdec=v4l2m2m --ao=null --loop-file=inf --input-ipc-server=/run/aya-stress/mpv.sock --glsl-shader=/var/lib/aya-player/teste/cornerpin.glsl --glsl-shader-opts=h0=1.37994368,h1=0.12987705,h2=-0.11688935,h3=0.07233066,h4=1.25855355,h5=-0.06871413,h6=0.20427068,h7=0.07109340,h8=1.00000000 --msg-level=all=warn /var/lib/aya-player/teste/reel-2025-16x9.mp4
+RuntimeDirectory=aya-stress
+Restart=always
+RestartSec=3
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+# Toca a lista em loop, um mpv por arquivo, com a saída HDMI travada num múltiplo inteiro do fps do vídeo
+# (24 -> 24 Hz, 25 -> 50 Hz, 30 -> 30 Hz). Sem modo compatível, fica no preferido da tela.
+# Lista com um arquivo só: o mpv toca com --loop-file=inf e emenda o fim no início sem fechar a tela
+# (a placa USB e a lista passam a ser lidas só quando o mpv sai).
+# Se houver placa de áudio USB (UCA222 aparece como "USB Audio CODEC"), o som vai para ela no lugar do que vier em EXTRA.
+# uso: aya-player-lista <lista.m3u> [opções extras do mpv]
+import re, subprocess, sys, time
+LISTA, EXTRA = sys.argv[1], sys.argv[2:]
+BASE = ['/usr/bin/mpv', '--no-config', '--vo=gpu', '--gpu-context=drm']
+
+def fps_do(arq):
+  r = subprocess.run(BASE[:2] + ['--vo=null', '--ao=null', '--frames=1', '--term-playing-msg=FPS=${container-fps}', arq],
+                     capture_output=True, text=True, timeout=30).stdout
+  m = re.search(r'FPS=([\d.]+)', r)
+  return float(m.group(1)) if m else None
+
+def modos():
+  r = subprocess.run(BASE + ['--drm-mode=help'], capture_output=True, text=True, timeout=30).stdout
+  return [(int(i), int(w), int(h), float(hz)) for i, w, h, hz in re.findall(r'Mode (\d+): \d+x\d+ \((\d+)x(\d+)@([\d.]+)Hz\)', r)]
+
+def modo_para(fps, ms):
+  if not fps: return None
+  erro = lambda m: abs(m[3] / fps - round(m[3] / fps)) / round(m[3] / fps)
+  ok = [m for m in ms if (m[1], m[2]) == (1920, 1080) and round(m[3] / fps) >= 1 and erro(m) < 0.0005]   # 24 não casa com 23,98
+  return min(ok, key=lambda m: m[3]) if ok else None   # o menor múltiplo: cada quadro dura o mesmo número de atualizações
+
+def audio_usb():
+  m = re.search(r'^\s*(\d+) \[(\w+)\s*\]: USB-Audio', open('/proc/asound/cards').read(), re.M)
+  return [f'--audio-device=alsa/plughw:CARD={m.group(2)}'] if m else []
+
+ms, cache = modos(), {}
+while True:
+  arqs = [l.strip() for l in open(LISTA) if l.strip() and not l.startswith('#')]
+  for a in arqs:
+    if a not in cache: cache[a] = fps_do(a)
+    m = modo_para(cache[a], ms)
+    print(f'{a}: {cache[a]} fps -> {"modo %d (%dx%d@%.2f)" % m if m else "modo preferido"}', flush=True)
+    au = audio_usb()   # lido a cada arquivo: placa plugada com o player rodando entra na troca seguinte
+    print(f'áudio: {au[0] if au else "o de EXTRA"}', flush=True)
+    loop = ['--loop-file=inf'] if len(arqs) == 1 else []   # sem reabrir o mpv, a volta não passa por preto
+    subprocess.run(BASE + ([f'--drm-mode={m[0]}'] if m else []) + EXTRA + au + loop + [a])
+    time.sleep(0.2)
