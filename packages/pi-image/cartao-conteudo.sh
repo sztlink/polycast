@@ -2,11 +2,12 @@
 # Põe os vídeos de um ponto direto no cartão do player, pelo leitor, sem rede: serve na gravação de um cartão novo e na
 # troca de conteúdo (tira o cartão do Pi, atualiza, devolve). A pasta conteudo/ passa a ter exatamente estes vídeos e a
 # lista.m3u esta ordem (a anterior fica com data); sha256 conferido no cartão depois do sync.
-# uso: sudo ./cartao-conteudo.sh <dispositivo> [--boot aya-boot.mp4] <video.mp4>...
+# uso: sudo ./cartao-conteudo.sh <dispositivo> [--boot aya-boot.mp4] [--volume N] [--ganho dB] <video.mp4>...
+#   --volume/--ganho escrevem o som.conf do ponto ao lado da lista (lido pelo aya-player-lista)
 # (AYA_TESTE_LOOP=1 aceita /dev/loopN)
 set -euo pipefail
-dev=$1; shift; boot=''; vids=()
-while (( $# )); do case $1 in --boot) boot=$2; shift 2;; *) vids+=("$1"); shift;; esac; done
+dev=$1; shift; boot=''; vol=''; ganho=''; vids=()
+while (( $# )); do case $1 in --boot) boot=$2; shift 2;; --volume) vol=$2; shift 2;; --ganho) ganho=$2; shift 2;; *) vids+=("$1"); shift;; esac; done
 re='^/dev/(sd[b-z]|mmcblk[0-9])$'; [[ ${AYA_TESTE_LOOP:-} == 1 ]] && re='^/dev/(sd[b-z]|mmcblk[0-9]|loop[0-9]+)$'
 [[ $dev =~ $re ]] || { echo "recusado: $dev não parece leitor de cartão"; exit 1; }
 for v in "${vids[@]}" $boot; do [[ -s $v ]] || { echo "não achei $v"; exit 1; }; done
@@ -32,9 +33,10 @@ for v in "${vids[@]}"; do rsync -t --inplace --info=progress2 "$v" "$c/"; done
 [[ -n $boot ]] && cp "$boot" "$r/var/lib/aya-player/aya-boot.mp4"
 [[ -f $c/lista.m3u ]] && cp "$c/lista.m3u" "$c/lista.m3u.$(date +%Y%m%d-%H%M%S)"
 for n in "${novos[@]}"; do echo "$d/$n"; done > "$c/lista.m3u"
+[[ -n $vol$ganho ]] && printf 'volume=%s\nganho_db=%s\n' "${vol:-100}" "${ganho:-0}" > "$c/som.conf"
 chown -R 1000:1000 "$r/var/lib/aya-player"   # aya é o primeiro usuário que o cloud-init cria
 sync; echo 3 > /proc/sys/vm/drop_caches
 for v in "${vids[@]}"; do
   [[ $(sha256sum < "$v") == $(sha256sum < "$c/$(basename "$v")") ]] || { echo "ERRO: $(basename "$v") chegou diferente no cartão"; exit 1; }
 done
-echo "ok: ${host:-cartão novo} com ${#vids[@]} vídeo(s), sha256 conferido: $(printf '%s ' "${novos[@]}")"
+echo "ok: ${host:-cartão novo} com ${#vids[@]} vídeo(s), sha256 conferido: $(printf '%s ' "${novos[@]}")${vol:+, volume $vol}${ganho:+ ganho $ganho dB}"

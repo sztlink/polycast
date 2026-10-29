@@ -3,10 +3,13 @@
 # (24 -> 24 Hz, 25 -> 50 Hz, 30 -> 30 Hz). Sem modo compatível, fica no preferido da tela.
 # Lista com um arquivo só: o mpv toca com --loop-file=inf e emenda o fim no início sem fechar a tela
 # (a placa USB e a lista passam a ser lidas só quando o mpv sai).
-# Se houver placa de áudio USB (UCA222 aparece como "USB Audio CODEC"), o som vai para ela no lugar do que vier em EXTRA.
+# Som por ponto (29/10): som.conf ao lado da lista (volume=, ganho_db=, saida=p2|usb), lido a cada arquivo. Padrão: P2 do
+# próprio Pi, volume 100, sem ganho. A placa USB só entra com saida=usb: no Pi 3B+ a UCA222 perde pacotes com vídeo tocando
+# (estalo no analógico, buraco no óptico), e placa espetada por engano não pode sequestrar o som.
 # uso: aya-player-lista <lista.m3u> [opções extras do mpv]
-import re, subprocess, sys, time
+import os, re, subprocess, sys, time
 LISTA, EXTRA = sys.argv[1], sys.argv[2:]
+SOM = os.path.join(os.path.dirname(LISTA), 'som.conf')
 BASE = ['/usr/bin/mpv', '--no-config', '--vo=gpu', '--gpu-context=drm']
 
 def fps_do(arq):
@@ -29,6 +32,15 @@ def audio_usb():
   m = re.search(r'^\s*(\d+) \[(\w+)\s*\]: USB-Audio', open('/proc/asound/cards').read(), re.M)
   return [f'--audio-device=alsa/plughw:CARD={m.group(2)}'] if m else []
 
+def som():
+  c = {}
+  try: c = dict(l.strip().split('=', 1) for l in open(SOM) if '=' in l and not l.lstrip().startswith('#'))
+  except (OSError, ValueError): pass
+  try: vol, ganho = int(float(c.get('volume', 100))), float(c.get('ganho_db', 0))
+  except ValueError: vol, ganho = 100, 0.0
+  o = [f'--volume={max(0, min(vol, 100))}'] + ([f'--af=lavfi=[volume={ganho:g}dB]'] if ganho else [])
+  return o + (audio_usb() if c.get('saida', 'p2').strip() == 'usb' else []), c
+
 ms, cache = modos(), {}
 while True:
   arqs = [l.strip() for l in open(LISTA) if l.strip() and not l.startswith('#')]
@@ -36,8 +48,8 @@ while True:
     if a not in cache: cache[a] = fps_do(a)
     m = modo_para(cache[a], ms)
     print(f'{a}: {cache[a]} fps -> {"modo %d (%dx%d@%.2f)" % m if m else "modo preferido"}', flush=True)
-    au = audio_usb()   # lido a cada arquivo: placa plugada com o player rodando entra na troca seguinte
-    print(f'áudio: {au[0] if au else "o de EXTRA"}', flush=True)
+    au, c = som()   # lido a cada arquivo: som.conf trocado entra na troca seguinte (ou no reinício, com um arquivo só)
+    print(f'som: {" ".join(au)} ({c or "som.conf ausente, padrão"})', flush=True)
     loop = ['--loop-file=inf'] if len(arqs) == 1 else []   # sem reabrir o mpv, a volta não passa por preto
     subprocess.run(BASE + ([f'--drm-mode={m[0]}'] if m else []) + EXTRA + au + loop + [a])
     time.sleep(0.2)

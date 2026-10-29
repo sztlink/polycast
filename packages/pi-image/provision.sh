@@ -7,7 +7,8 @@ export DEBIAN_FRONTEND=noninteractive
 # pacotes: player, controle de TV (cec-ctl vem no v4l-utils), acesso remoto, diagnóstico
 # sem internet (estação de campo), o provisiona-campo.sh já deixou listas e pacotes na cache local
 apt-get update -q || echo 'sem internet: instalando da cache local do apt'
-apt-get install -y -q --no-install-recommends mpv wireguard-tools v4l-utils nodejs npm jq rsync alsa-utils
+# sem npm (29/10): eram centenas de pacotes node e a maior parte do primeiro boot; o player não usa
+apt-get install -y -q --no-install-recommends mpv wireguard-tools v4l-utils nodejs jq rsync alsa-utils
 
 # boot silencioso e sem tela de console
 cfg=/boot/firmware/config.txt
@@ -19,6 +20,10 @@ cmd=/boot/firmware/cmdline.txt
 for o in quiet loglevel=3 logo.nologo vt.global_cursor_default=0 consoleblank=0 fbcon=map:9; do
   grep -qw "$o" $cmd || sed -i "s/\$/ $o/" $cmd
 done
+
+# cabo direto da estação de campo, sem roteador (29/10): sem DHCP, o Pi pega 169.254.x.x e é achado pelo nome .local
+mkdir -p /etc/NetworkManager/conf.d
+printf '[connection]\nipv4.link-local=fallback\nipv4.dhcp-timeout=20\n' > /etc/NetworkManager/conf.d/80-aya-cabo-direto.conf
 
 # watchdog de hardware: o systemd alimenta; se o sistema travar, o Pi reinicia sozinho
 mkdir -p /etc/systemd/system.conf.d
