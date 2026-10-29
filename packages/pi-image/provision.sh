@@ -34,7 +34,7 @@ systemctl disable --now ModemManager bluetooth hciuart 2>/dev/null || true
 install -d -o aya -g aya /opt/aya-player /var/lib/aya-player /var/lib/aya-player/conteudo
 
 # player: scripts e serviços vêm em /tmp/aya-player-pacote (o provisiona.sh manda a pasta player/)
-pac=/tmp/aya-player-pacote
+pac=${AYA_PACOTE:-/tmp/aya-player-pacote}   # no cartão sem rede vem em /var/lib/aya-instala/pacote
 if [[ -d $pac ]]; then
   install -m 755 $pac/bin/aya-player-lista $pac/bin/aya-player-log /usr/local/bin/
   install -m 644 $pac/systemd/aya-player.service $pac/systemd/aya-boot.service \
