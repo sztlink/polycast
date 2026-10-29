@@ -5,7 +5,8 @@ set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
 # pacotes: player, controle de TV (cec-ctl vem no v4l-utils), acesso remoto, diagnóstico
-apt-get update -q
+# sem internet (estação de campo), o provisiona-campo.sh já deixou listas e pacotes na cache local
+apt-get update -q || echo 'sem internet: instalando da cache local do apt'
 apt-get install -y -q --no-install-recommends mpv wireguard-tools v4l-utils nodejs npm jq rsync alsa-utils
 
 # boot silencioso e sem tela de console
