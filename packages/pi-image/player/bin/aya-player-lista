@@ -44,6 +44,7 @@ def som():
 ms, cache = modos(), {}
 while True:
   arqs = [l.strip() for l in open(LISTA) if l.strip() and not l.startswith('#')]
+  if not arqs: time.sleep(10); continue   # ponto ainda sem vídeo (cartão gravado só com a imagem): espera a lista, sem girar a CPU
   for a in arqs:
     if a not in cache: cache[a] = fps_do(a)
     m = modo_para(cache[a], ms)

@@ -19,7 +19,12 @@ r=$(mktemp -d); mount "$p2" "$r"; trap 'umount "$r" 2>/dev/null; rmdir "$r" 2>/d
 # o nome vem do user-data (antes do primeiro boot o /etc/hostname ainda é raspberrypi)
 p1=$(lsblk -lnpo NAME "$dev" | sed -n 2p); b=$(mktemp -d); mount -o ro "$p1" "$b"
 host=$(sed -n 's/^hostname: *//p' "$b/user-data" 2>/dev/null | head -1); umount "$b"; rmdir "$b"
-d=/var/lib/aya-player/conteudo; c=$r$d; mkdir -p "$c"
+# /var/lib/aya-player é a 3ª partição (aya-dados) nos cartões com raiz somente leitura; nos antigos, pasta da raiz
+p3=$(lsblk -lnpo NAME "$dev" | sed -n 4p); dados=$r/var/lib/aya-player
+if [[ -n $p3 && $(lsblk -no LABEL "$p3") == aya-dados ]]; then
+  dados=$(mktemp -d); mount "$p3" "$dados"; trap 'umount "$dados" "$r" 2>/dev/null; rmdir "$dados" "$r" 2>/dev/null' EXIT
+fi
+d=/var/lib/aya-player/conteudo; c=$dados/conteudo; mkdir -p "$c"
 # o que não está na lista nova sai antes de copiar, para caber
 mapfile -t novos < <(for v in "${vids[@]}"; do basename "$v"; done)
 for f in "$c"/*; do
@@ -27,14 +32,14 @@ for f in "$c"/*; do
   [[ $n == lista.m3u* ]] && continue
   printf '%s\n' "${novos[@]}" | grep -qxF "$n" || rm -f "$f"
 done
-precisa=$(du -cb "${vids[@]}" $boot | tail -1 | cut -f1); livre=$(df -B1 --output=avail "$r" | tail -1)
+precisa=$(du -cb "${vids[@]}" $boot | tail -1 | cut -f1); livre=$(df -B1 --output=avail "$dados" | tail -1)
 (( precisa < livre )) || { echo "não cabe: precisa $((precisa / 1000000)) MB, livre $((livre / 1000000)) MB"; exit 1; }
 for v in "${vids[@]}"; do rsync -t --inplace --info=progress2 "$v" "$c/"; done
-[[ -n $boot ]] && cp "$boot" "$r/var/lib/aya-player/aya-boot.mp4"
+[[ -n $boot ]] && cp "$boot" "$dados/aya-boot.mp4"
 [[ -f $c/lista.m3u ]] && cp "$c/lista.m3u" "$c/lista.m3u.$(date +%Y%m%d-%H%M%S)"
 for n in "${novos[@]}"; do echo "$d/$n"; done > "$c/lista.m3u"
 [[ -n $vol$ganho ]] && printf 'volume=%s\nganho_db=%s\n' "${vol:-100}" "${ganho:-0}" > "$c/som.conf"
-chown -R 1000:1000 "$r/var/lib/aya-player"   # aya é o primeiro usuário que o cloud-init cria
+chown -R 1000:1000 "$dados"   # aya é o primeiro usuário que o cloud-init cria
 sync; echo 3 > /proc/sys/vm/drop_caches
 for v in "${vids[@]}"; do
   [[ $(sha256sum < "$v") == $(sha256sum < "$c/$(basename "$v")") ]] || { echo "ERRO: $(basename "$v") chegou diferente no cartão"; exit 1; }

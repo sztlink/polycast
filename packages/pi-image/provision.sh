@@ -8,7 +8,8 @@ export DEBIAN_FRONTEND=noninteractive
 # sem internet (estação de campo), o provisiona-campo.sh já deixou listas e pacotes na cache local
 apt-get update -q || echo 'sem internet: instalando da cache local do apt'
 # sem npm (29/10): eram centenas de pacotes node e a maior parte do primeiro boot; o player não usa
-apt-get install -y -q --no-install-recommends mpv wireguard-tools v4l-utils nodejs jq rsync alsa-utils
+# overlayroot: raiz somente leitura (ver o fim); sem recommends, que puxariam cryptsetup-initramfs e haveged
+apt-get install -y -q --no-install-recommends mpv wireguard-tools v4l-utils nodejs jq rsync alsa-utils overlayroot
 
 # boot silencioso e sem tela de console
 cfg=/boot/firmware/config.txt
@@ -53,5 +54,14 @@ if [[ -d $pac ]]; then
   systemctl enable aya-boot.service aya-player.service aya-player-log.timer
   systemctl restart aya-player.service aya-player-log.timer
   rm -r $pac
+fi
+# raiz somente leitura (29/10): o sistema roda sobre uma camada em RAM e nada do que ele escreve chega ao cartão, então
+# queda de energia não corrompe a raiz. Os vídeos, a lista, o som.conf e o registro ficam em /var/lib/aya-player, que no
+# cartão gravado pela estação é a 3ª partição (aya-dados), gravável. Para mexer no sistema: tirar "overlayroot=tmpfs" do
+# cmdline.txt (pela estação, com o cartão no leitor) ou "sudo overlayroot-chroot" no Pi. AYA_OVERLAY=0 não liga.
+if [[ ${AYA_OVERLAY:-1} == 1 ]]; then
+  [[ -f /boot/firmware/initramfs8 ]] && lsinitramfs /boot/firmware/initramfs8 | grep -q overlayroot \
+    || { echo "FALHA: o initramfs não tem o overlayroot, a raiz ficaria gravável"; exit 1; }
+  grep -qw 'overlayroot=tmpfs' $cmd || sed -i 's/^/overlayroot=tmpfs /' $cmd
 fi
 echo "ok: base do player em $(hostname), $(tr -d '\0' < /proc/device-tree/model)"

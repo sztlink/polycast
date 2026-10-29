@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deixa um cartão recém-gravado pelo grava-cartao.sh pronto para virar player SEM REDE (montagem do CCBB, decisão 29/10):
-# cresce a raiz até o fim do cartão (o Pi não precisa fazer o resize e já cabem os vídeos), leva a cache do apt
+# faz a raiz de 8 GiB e a partição de dados com o resto (o Pi não precisa fazer o resize), leva a cache do apt
 # (listas + pacotes arm64 com que a imagem foi feita), a pasta player/ e o provision.sh, e põe no user-data um runcmd que,
 # no primeiro boot, instala tudo da cache, liga o player e reinicia. Os vídeos entram depois, pelo cartao-conteudo.sh.
 # uso: sudo ./cartao-offline.sh <dispositivo> <cache do apt (lists/ e archives/)>
@@ -15,13 +15,25 @@ if lsblk -no MOUNTPOINTS "$dev" | grep -q .; then echo "recusado: $dev tem parti
 p1=$(lsblk -lnpo NAME "$dev" | sed -n 2p); p2=$(lsblk -lnpo NAME "$dev" | sed -n 3p)
 [[ $(lsblk -no FSTYPE "$p1") == vfat && $(lsblk -no FSTYPE "$p2") == ext4 ]] || { echo "recusado: $dev não tem o layout da imagem (vfat + ext4)"; exit 1; }
 
-# raiz até o fim do cartão; o "resize" sai do cmdline porque já não há o que crescer
-parted -s "$dev" resizepart 2 100%; partprobe "$dev"; sleep 1
+[[ -z $(lsblk -lnpo NAME "$dev" | sed -n 4p) ]] || { echo "recusado: $dev já tem 3ª partição (já passou por aqui?)"; exit 1; }
+# raiz com 8 GiB e o resto do cartão numa 3ª partição, aya-dados, montada em /var/lib/aya-player (29/10): a raiz roda
+# somente leitura (overlayroot, ver provision.sh) e os vídeos, a lista, o som.conf e o registro ficam nela, graváveis.
+# Vídeo mandado pela rede não pode cair na camada em RAM (1 GB no Pi 3B+). O "resize" sai do cmdline: não há o que crescer.
+ini=$(parted -sm "$dev" unit MiB print | awk -F: '$1==2{sub("MiB","",$2); print int($2)}')
+fim=$((ini + 8192)); total=$(( $(lsblk -bndo SIZE "$dev") / 1048576 ))
+(( total - fim >= 4096 )) || { echo "recusado: $dev pequeno demais ($total MiB) para raiz de 8 GiB e dados"; exit 1; }
+parted -s "$dev" unit MiB resizepart 2 $fim mkpart primary ext4 $fim 100%; partprobe "$dev"; udevadm settle; sleep 1
+p3=$(lsblk -lnpo NAME "$dev" | sed -n 4p); [[ -n $p3 ]] || { echo "erro: a 3ª partição não apareceu"; exit 1; }
 e2fsck -fy "$p2" >/dev/null || [[ $? -le 1 ]]
 resize2fs "$p2" >/dev/null
-b=$(mktemp -d); r=$(mktemp -d); mount "$p1" "$b"; mount "$p2" "$r"
-trap 'umount "$b" "$r" 2>/dev/null; rmdir "$b" "$r" 2>/dev/null' EXIT
+mkfs.ext4 -q -F -L aya-dados -m 0 "$p3"
+b=$(mktemp -d); r=$(mktemp -d); dados=$(mktemp -d); mount "$p1" "$b"; mount "$p2" "$r"; mount "$p3" "$dados"
+trap 'umount "$b" "$r" "$dados" 2>/dev/null; rmdir "$b" "$r" "$dados" 2>/dev/null' EXIT
 sed -i 's/ resize\b//' "$b/cmdline.txt"
+mkdir -p "$r/var/lib/aya-player"
+[[ -n $(ls -A "$r/var/lib/aya-player") ]] && mv "$r/var/lib/aya-player/"* "$dados/"
+grep -q aya-dados "$r/etc/fstab" || echo 'LABEL=aya-dados  /var/lib/aya-player  ext4  defaults,noatime,nofail  0  2' >> "$r/etc/fstab"
+chown -R 1000:1000 "$dados"   # aya é o primeiro usuário que o cloud-init cria
 
 # cache do apt e instalador do primeiro boot
 cp -a "$apt/lists/." "$r/var/lib/apt/lists/"
@@ -48,4 +60,4 @@ grep -q aya-instala "$b/user-data" || printf 'runcmd:\n  - [bash, /var/lib/aya-i
 python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); assert d['runcmd'] and d['users'][0]['ssh_authorized_keys']" "$b/user-data" \
   || { echo "erro: user-data inválido depois do runcmd"; exit 1; }
 sync
-echo "ok: $dev pronto para instalar sem rede ($(df -h --output=avail "$r" | tail -1 | tr -d ' ') livres na raiz)"
+echo "ok: $dev pronto para instalar sem rede ($(df -h --output=avail "$dados" | tail -1 | tr -d ' ') livres para vídeos)"
