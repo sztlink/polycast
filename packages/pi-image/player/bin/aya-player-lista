@@ -10,6 +10,7 @@
 import os, re, subprocess, sys, time
 LISTA, EXTRA = sys.argv[1], sys.argv[2:]
 SOM = os.path.join(os.path.dirname(LISTA), 'som.conf')
+BOOT = '/var/lib/aya-player/aya-boot.mp4'
 BASE = ['/usr/bin/mpv', '--no-config', '--vo=gpu', '--gpu-context=drm']
 
 def fps_do(arq):
@@ -41,10 +42,23 @@ def som():
   o = [f'--volume={max(0, min(vol, 100))}'] + ([f'--af=lavfi=[volume={ganho:g}dB]'] if ganho else [])
   return o + (audio_usb() if c.get('saida', 'p2').strip() == 'usb' else []), c
 
+def tem_video():
+  try: return any(l.strip() and not l.startswith('#') for l in open(LISTA))
+  except OSError: return False
+
+def espera():
+  # ponto ainda sem vídeo (cartão gravado só com a imagem): tela de espera com o vídeo de boot da AYA em loop, sem som,
+  # até a lista ganhar um vídeo (olhada a cada 10 s); sem o vídeo de boot, só espera sem girar a CPU
+  if not os.path.exists(BOOT): time.sleep(10); return
+  print(f'lista vazia: tela de espera ({BOOT})', flush=True)
+  p = subprocess.Popen(BASE + EXTRA + ['--ao=null', '--loop-file=inf', BOOT])
+  while p.poll() is None and not tem_video(): time.sleep(10)
+  if p.poll() is None: p.terminate(); p.wait()
+
 ms, cache = modos(), {}
 while True:
   arqs = [l.strip() for l in open(LISTA) if l.strip() and not l.startswith('#')]
-  if not arqs: time.sleep(10); continue   # ponto ainda sem vídeo (cartão gravado só com a imagem): espera a lista, sem girar a CPU
+  if not arqs: espera(); continue
   for a in arqs:
     if a not in cache: cache[a] = fps_do(a)
     m = modo_para(cache[a], ms)
