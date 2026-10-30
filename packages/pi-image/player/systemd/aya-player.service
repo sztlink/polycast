@@ -11,5 +11,7 @@ ExecStart=/usr/local/bin/aya-player-lista /var/lib/aya-player/conteudo/lista.m3u
 RuntimeDirectory=aya-player
 Restart=always
 RestartSec=3
+# mpv congelado (SIGSTOP, travado no driver) não pode segurar o reinício do vigia por 90 s
+TimeoutStopSec=10
 [Install]
 WantedBy=multi-user.target

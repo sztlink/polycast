@@ -4,6 +4,13 @@
 # erros_commit = falhas de commit atômico do mpv no último minuto (a causa da tela preta de 21-23/10),
 # underrun = contador de underrun do HVS (quadro que o compositor não conseguiu montar a tempo).
 # fps = taxa do vídeo em cena (a régua das trocas/s), audio = estado do PCM do fone (RUNNING ou XRUN), avsync = áudio menos vídeo em s.
+# Sem rede na expo (30/10), este registro também cuida do Pi:
+# - boot = número do boot (o Pi não tem relógio: a hora só anda enquanto ele está ligado e cada boot recomeça da última
+#   hora registrada, então o boot e o uptime são a régua; a hora é aproximada e nunca volta para trás);
+# - vigia: dois minutos seguidos com a tela parada (0 trocas/s ou o mpv sem responder ou sem andar) reiniciam o player;
+#   se três reinícios não resolvem, reinicia o Pi (no máximo uma vez a cada 15 min de uptime);
+# - LED verde (ACT): pisca como coração = tocando bem; pisca rápido = problema (tela parada, subtensão, player fora);
+#   aceso fixo = sem vídeo na lista.
 import json, socket, subprocess, time, os, re
 DRI = '/sys/kernel/debug/dri/0'
 def mpv(prop):
@@ -40,9 +47,62 @@ linha = [time.strftime('%Y-%m-%dT%H:%M:%S'), int(float(open('/proc/uptime').read
          mpv('frame-drop-count'), mpv('decoder-frame-drop-count'), mpv('time-pos'), mem['MemAvailable'] // 1024, os.getloadavg()[0],
          ler('/sys/class/drm/card0-HDMI-A-1/status').strip(), crtc_ativo(), trocas(), erros, ler(f'{DRI}/hvs_underrun').strip(),
          os.path.basename(mpv('path') or ''), mpv('container-fps'), pcm_ativo(), mpv('avsync'), mpv('display-fps')]
-CSV = '/var/lib/aya-player/registro.csv'
+DADOS = '/var/lib/aya-player'
+CSV, ESTADO, VIGIA = f'{DADOS}/registro.csv', f'{DADOS}/estado.json', '/run/aya-player-vigia.json'
+CAB = ('hora,uptime_s,temp_c,throttled,player,reinicios,quedas_vo,quedas_dec,time_pos,mem_livre_mb,load1,'
+       'hdmi,crtc_ativo,trocas_s,erros_commit,underrun,arquivo,fps,audio,avsync,hz,boot,vigia\n')
+def jl(p, d):
+  try: return json.load(open(p))
+  except Exception: return d
+def js(p, d):
+  with open(p + '.novo', 'w') as f: json.dump(d, f)
+  os.replace(p + '.novo', p)
+
+# boot e hora: o estado fica na partição de dados; a hora nunca volta para antes da última registrada
+est = jl(ESTADO, {'boot': 0, 'boot_id': '', 'hora': 0})
+bid = ler('/proc/sys/kernel/random/boot_id').strip()
+if bid != est['boot_id']:
+  est['boot'] += 1; est['boot_id'] = bid
+  if time.time() < est['hora']:
+    subprocess.run(['date', '-s', '@%d' % (est['hora'] + 60)], capture_output=True)
+    linha[0] = time.strftime('%Y-%m-%dT%H:%M:%S')
+est['hora'] = int(time.time())
+
+# vigia da tela: ruim = player ativo, lista com vídeo e (0 trocas/s, ou mpv mudo, ou time_pos parado)
+def tem_lista():
+  try: return any(l.strip() and not l.startswith('#') for l in open(f'{DADOS}/conteudo/lista.m3u'))
+  except OSError: return False
+v = jl(VIGIA, {'ruins': 0, 'reinicios': 0, 'pos': None})
+lista, ativo, tpos, troc = tem_lista(), linha[4] == 'active', linha[8], linha[13]
+ruim = lista and ativo and (troc == 0 or tpos is None or tpos == v['pos'])
+v['ruins'] = v['ruins'] + 1 if ruim else 0; v['pos'] = tpos
+acao = 'ok' if not ruim else 'ruim'
+if v['ruins'] >= 2:
+  up = int(float(open('/proc/uptime').read().split()[0]))
+  if v['reinicios'] >= 3 and up > 900:
+    acao = 'reinicia-pi'
+  else:
+    acao = 'reinicia-player'; v['reinicios'] += 1; v['ruins'] = 0   # os reinícios contam por boot (/run zera)
+linha += [est['boot'], acao]
+
+# LED verde: estado num relance, sem rede nem tela
+def led(trig, on=None, off=None):
+  b = '/sys/class/leds/ACT'
+  try:
+    open(f'{b}/trigger', 'w').write(trig)
+    if on: open(f'{b}/delay_on', 'w').write(str(on)); open(f'{b}/delay_off', 'w').write(str(off))
+  except OSError: pass
+subtensao = int(linha[3], 16) & 0x1 if str(linha[3]).startswith('0x') else 0
+if not lista: led('default-on')
+elif ruim or not ativo or subtensao: led('timer', 100, 100)
+else: led('heartbeat')
+
+if os.path.exists(CSV) and not open(CSV).readline().startswith(CAB.strip()):
+  os.replace(CSV, f'{DADOS}/registro-ate-boot-{est["boot"]}.csv')   # cabeçalho antigo: guarda e recomeça
 novo = not os.path.exists(CSV)
 with open(CSV, 'a') as f:
-  if novo: f.write('hora,uptime_s,temp_c,throttled,player,reinicios,quedas_vo,quedas_dec,time_pos,mem_livre_mb,load1,'
-                   'hdmi,crtc_ativo,trocas_s,erros_commit,underrun,arquivo,fps,audio,avsync,hz\n')
+  if novo: f.write(CAB)
   f.write(','.join(str(x) for x in linha) + '\n')
+js(ESTADO, est); js(VIGIA, v)
+if acao == 'reinicia-player': subprocess.run(['systemctl', 'restart', 'aya-player'])
+if acao == 'reinicia-pi': os.sync(); subprocess.run(['systemctl', 'reboot'])
