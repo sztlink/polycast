@@ -2,6 +2,7 @@
 Description=aya-player tela de boot (toca aya-boot.mp4 uma vez, antes do player)
 DefaultDependencies=no
 After=local-fs.target systemd-udevd.service
+RequiresMountsFor=/var/lib/aya-player
 Before=aya-player.service
 ConditionPathExists=/var/lib/aya-player/aya-boot.mp4
 [Service]

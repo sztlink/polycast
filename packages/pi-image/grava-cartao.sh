@@ -6,24 +6,16 @@ set -euo pipefail
 img=$1; dev=$2; host=$3; shift 3
 aqui=$(cd "$(dirname "$0")" && pwd)
 
-# guardas: só cartão removível, até 140 GB, nunca o disco do sistema, nada montado
-nome=$(basename "$dev")
-# AYA_TESTE_LOOP=1 aceita /dev/loopN (ensaio numa imagem em arquivo, nunca um disco)
-re='^/dev/(sd[b-z]|mmcblk[0-9])$'; [[ ${AYA_TESTE_LOOP:-} == 1 ]] && re='^/dev/(sd[b-z]|mmcblk[0-9]|loop[0-9]+)$'
-[[ $dev =~ $re ]] || { echo "recusado: $dev não parece leitor de cartão"; exit 1; }
-[[ $(cat /sys/block/$nome/removable 2>/dev/null) == 1 || $nome == mmcblk* || $nome == loop* ]] || { echo "recusado: $dev não é removível"; exit 1; }
+source "$aqui/guarda-cartao.sh"; guarda_cartao "$dev"
 tam=$(lsblk -bndo SIZE "$dev")
-(( tam > 0 && tam <= 140000000000 )) || { echo "recusado: tamanho $tam fora de 0-140 GB"; exit 1; }
-raiz=$(findmnt -no SOURCE / | xargs -I{} lsblk -no PKNAME {} 2>/dev/null | head -1)
-[[ $nome != "$raiz" ]] || { echo "recusado: $dev é o disco do sistema"; exit 1; }
-if lsblk -no MOUNTPOINTS "$dev" | grep -q .; then echo "recusado: $dev tem partição montada"; exit 1; fi
+for k in "$@"; do grep -q '^ssh-' "$k" 2>/dev/null || { echo "recusado: $k não é chave pública SSH"; exit 1; }; done   # antes do dd de 4 min
 [[ $host =~ ^(p[0-9]{2}|r[0-9]{2}|pbancada)$ ]] || { echo "recusado: host $host fora do padrão p01/r01/pbancada"; exit 1; }
 
 echo "gravando $img em $dev ($((tam / 1000000000)) GB) como $host"
 xz -dc "$img" | dd of="$dev" bs=4M conv=fsync status=progress
 partprobe "$dev"; sleep 2
 p1=$(lsblk -lnpo NAME "$dev" | sed -n 2p)
-m=$(mktemp -d); mount "$p1" "$m"
+m=$(mktemp -d); mount "$p1" "$m"; trap 'umount "$m" 2>/dev/null || true; rmdir "$m" 2>/dev/null || true' EXIT   # trap que falha muda o código de saída sob set -e
 chaves=$(for k in "$@"; do printf '      - %s\n' "$(cat "$k")"; done)
 awk -v h="$host" -v c="$chaves" '{gsub("__HOST__", h); if ($0 ~ /__CHAVES__/) print c; else print}' "$aqui/cloud-init/user-data.tmpl" > "$m/user-data"
 cp "$aqui/cloud-init/network-config" "$m/network-config"

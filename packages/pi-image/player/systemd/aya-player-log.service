@@ -2,4 +2,5 @@
 Description=registro por minuto da saída do aya-player
 [Service]
 Type=oneshot
+TimeoutStartSec=50
 ExecStart=/usr/local/bin/aya-player-log

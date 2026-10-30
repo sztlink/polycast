@@ -1,6 +1,7 @@
 [Unit]
 Description=aya-player (lista em loop, HDMI travado no fps do vídeo, vídeo no overlay, áudio no fone ou na placa USB)
 After=multi-user.target aya-boot.service
+RequiresMountsFor=/var/lib/aya-player
 Conflicts=getty@tty1.service
 [Service]
 User=aya

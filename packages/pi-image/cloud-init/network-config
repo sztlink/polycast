@@ -1,4 +1,4 @@
-# Bancada: cabo com DHCP. O Wi-Fi da expo e o IP fixo do projetor entram no provision.sh (NetworkManager).
+# Cabo com DHCP; sem DHCP (cabo direto da estação), link-local 169.254 pelo provision.sh (NetworkManager). A expo não tem rede.
 network:
   version: 2
   ethernets:

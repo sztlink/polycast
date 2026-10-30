@@ -3,6 +3,8 @@
 # uso (do AYA2): ./provisiona.sh <pi>   (manda a pasta player/ e roda este script no Pi)
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
+# com a raiz em overlay, o que se instala aqui some no próximo boot: mexer no sistema por "sudo overlayroot-chroot"
+[[ $(findmnt -no FSTYPE /) != overlay ]] || { echo "recusado: a raiz está em overlay (somente leitura), use sudo overlayroot-chroot"; exit 1; }
 
 # pacotes: player, controle de TV (cec-ctl vem no v4l-utils), acesso remoto, diagnóstico
 # sem internet (estação de campo), o provisiona-campo.sh já deixou listas e pacotes na cache local
@@ -53,15 +55,20 @@ if [[ -d $pac ]]; then
   systemctl daemon-reload
   systemctl enable aya-boot.service aya-player.service aya-player-log.timer
   systemctl restart aya-player.service aya-player-log.timer
-  rm -r $pac
+  [[ $pac == /tmp/* ]] && rm -r $pac   # o pacote do cartão fica: o aya-instala pode precisar tentar de novo
 fi
 # raiz somente leitura (29/10): o sistema roda sobre uma camada em RAM e nada do que ele escreve chega ao cartão, então
 # queda de energia não corrompe a raiz. Os vídeos, a lista, o som.conf e o registro ficam em /var/lib/aya-player, que no
-# cartão gravado pela estação é a 3ª partição (aya-dados), gravável. Para mexer no sistema: tirar "overlayroot=tmpfs" do
+# cartão gravado pela estação é a 3ª partição (aya-dados), gravável. Para mexer no sistema: tirar "overlayroot=..." do
 # cmdline.txt (pela estação, com o cartão no leitor) ou "sudo overlayroot-chroot" no Pi. AYA_OVERLAY=0 não liga.
-if [[ ${AYA_OVERLAY:-1} == 1 ]]; then
-  [[ -f /boot/firmware/initramfs8 ]] && lsinitramfs /boot/firmware/initramfs8 | grep -q overlayroot \
+# só com /var/lib/aya-player numa partição própria: sem ela, vídeo mandado pela rede cairia na RAM (cartão antigo, sem aya-dados)
+if [[ ${AYA_OVERLAY:-1} == 1 ]] && mountpoint -q /var/lib/aya-player; then
+  # < <(): com pipefail, "lsinitramfs | grep -q" pode dar SIGPIPE no lsinitramfs e reprovar um initramfs bom
+  [[ -f /boot/firmware/initramfs8 ]] && grep -q overlayroot < <(lsinitramfs /boot/firmware/initramfs8) \
     || { echo "FALHA: o initramfs não tem o overlayroot, a raiz ficaria gravável"; exit 1; }
-  grep -qw 'overlayroot=tmpfs' $cmd || sed -i 's/^/overlayroot=tmpfs /' $cmd
+  # recurse=0: a camada em RAM cobre só a raiz; sem isso o overlayroot cobre também a aya-dados e o registro some a cada boot
+  grep -qw 'overlayroot=tmpfs:recurse=0' $cmd || sed -i 's/^/overlayroot=tmpfs:recurse=0 /' $cmd
+elif [[ ${AYA_OVERLAY:-1} == 1 ]]; then
+  echo "aviso: /var/lib/aya-player não é partição própria (cartão antigo), a raiz fica gravável"
 fi
 echo "ok: base do player em $(hostname), $(tr -d '\0' < /proc/device-tree/model)"

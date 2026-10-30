@@ -14,13 +14,15 @@ BOOT = '/var/lib/aya-player/aya-boot.mp4'
 BASE = ['/usr/bin/mpv', '--no-config', '--vo=gpu', '--gpu-context=drm']
 
 def fps_do(arq):
-  r = subprocess.run(BASE[:2] + ['--vo=null', '--ao=null', '--frames=1', '--term-playing-msg=FPS=${container-fps}', arq],
+  try: r = subprocess.run(BASE[:2] + ['--vo=null', '--ao=null', '--frames=1', '--term-playing-msg=FPS=${container-fps}', arq],
                      capture_output=True, text=True, timeout=30).stdout
+  except Exception: return None
   m = re.search(r'FPS=([\d.]+)', r)
   return float(m.group(1)) if m else None
 
 def modos():
-  r = subprocess.run(BASE + ['--drm-mode=help'], capture_output=True, text=True, timeout=30).stdout
+  try: r = subprocess.run(BASE + ['--drm-mode=help'], capture_output=True, text=True, timeout=30).stdout
+  except Exception: return []
   return [(int(i), int(w), int(h), float(hz)) for i, w, h, hz in re.findall(r'Mode (\d+): \d+x\d+ \((\d+)x(\d+)@([\d.]+)Hz\)', r)]
 
 def modo_para(fps, ms):
@@ -36,9 +38,10 @@ def audio_usb():
 def som():
   c = {}
   try: c = dict(l.strip().split('=', 1) for l in open(SOM) if '=' in l and not l.lstrip().startswith('#'))
-  except (OSError, ValueError): pass
+  except Exception: pass
   try: vol, ganho = int(float(c.get('volume', 100))), float(c.get('ganho_db', 0))
-  except ValueError: vol, ganho = 100, 0.0
+  except (ValueError, OverflowError): vol, ganho = 100, 0.0   # volume=inf, lixo: padrão, nunca derrubar o player
+  ganho = min(max(ganho, -30.0), 30.0) if ganho == ganho else 0.0   # nan fica 0; inf vira o teto
   o = [f'--volume={max(0, min(vol, 100))}'] + ([f'--af=lavfi=[volume={ganho:g}dB]'] if ganho else [])
   return o + (audio_usb() if c.get('saida', 'p2').strip() == 'usb' else []), c
 
@@ -57,7 +60,9 @@ def espera():
 
 ms, cache = modos(), {}
 while True:
-  arqs = [l.strip() for l in open(LISTA) if l.strip() and not l.startswith('#')]
+  try: arqs = [l.strip() for l in open(LISTA) if l.strip() and not l.startswith('#')]
+  except OSError: arqs = []   # lista ausente (aya-dados não montou): tela de espera, sem cair em laço
+  if not ms: ms = modos()     # tela desligada na partida: sem modos, sem trava de fps; tenta de novo a cada volta
   if not arqs: espera(); continue
   for a in arqs:
     if a not in cache: cache[a] = fps_do(a)
